@@ -1,0 +1,69 @@
+# Builds the glyph dictionary, exports it for the browser, and publishes web/ to GitHub Pages.
+# Run it from the repo's Actions tab ("Run workflow"). The first build is slow (fonts + ~410k glyphs).
+name: Build and deploy to GitHub Pages
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache fonts and dictionary
+        uses: actions/cache@v4
+        with:
+          path: |
+            assets
+            cache
+          key: dict-${{ hashFiles('badapple_unicode/**', 'pyproject.toml') }}
+          restore-keys: dict-
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[cpu]'
+
+      - name: Fetch fonts
+        run: python -m badapple_unicode fetch --no-video
+
+      - name: Build dictionary
+        run: python -m badapple_unicode build --dictionary cache/full-dictionary
+
+      - name: Export for the browser
+        run: python -m badapple_unicode web-export --dictionary cache/full-dictionary --output web/data
+
+      - name: Prepare site
+        run: |
+          rm -f web/.gitignore web/test-video.mp4
+          echo "Largest files:"; find web -type f -size +20M -exec ls -la {} \; || true
+          du -sh web
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
