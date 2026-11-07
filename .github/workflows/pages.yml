@@ -26,12 +26,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Fails immediately if Pages is not enabled (Settings > Pages > Source: GitHub Actions).
+      - uses: actions/configure-pages@v5
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Cache fonts and dictionary
-        uses: actions/cache@v4
+      - name: Restore fonts and dictionary
+        id: cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             assets
@@ -50,6 +54,15 @@ jobs:
       - name: Build dictionary
         run: python -m badapple_unicode build --dictionary cache/full-dictionary
 
+      - name: Save fonts and dictionary
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            assets
+            cache
+          key: dict-${{ hashFiles('badapple_unicode/**', 'pyproject.toml') }}
+
       - name: Export for the browser
         run: python -m badapple_unicode web-export --dictionary cache/full-dictionary --output web/data
 
@@ -58,8 +71,6 @@ jobs:
           rm -f web/.gitignore web/test-video.mp4
           echo "Largest files:"; find web -type f -size +20M -exec ls -la {} \; || true
           du -sh web
-
-      - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
         with:
